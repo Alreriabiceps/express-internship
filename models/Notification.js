@@ -10,6 +10,7 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
+        "welcome",
         "account_verified",
         "account_rejected",
         "endorsement_received",
@@ -70,9 +71,3 @@ notificationSchema.index({ userId: 1, isRead: 1 });
 notificationSchema.index({ type: 1 });
 
 export default mongoose.model("Notification", notificationSchema);
-
-
-
-
-
-

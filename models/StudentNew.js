@@ -144,14 +144,6 @@ const studentSchema = new mongoose.Schema(
           default: 50000,
         },
       },
-      schedule: {
-        type: String,
-        trim: true,
-      },
-      durationHours: {
-        type: Number,
-        default: 486,
-      },
       location: [
         {
           type: String,
@@ -316,4 +308,4 @@ studentSchema.methods.toJSON = function () {
   return studentObject;
 };
 
-export default mongoose.model("Student", studentSchema);
+export default mongoose.model("StudentNew", studentSchema);

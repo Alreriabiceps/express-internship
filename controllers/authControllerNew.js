@@ -93,13 +93,6 @@ export const register = async (req, res, next) => {
       });
     } else if (role === "company") {
       // Create company
-      console.log("🏢 Creating company with data:", {
-        email,
-        companyName,
-        industry,
-        companySize,
-      });
-
       newUser = await Company.create({
         email,
         password,
@@ -111,7 +104,7 @@ export const register = async (req, res, next) => {
         industry,
         companySize,
         website,
-        description: "", // Empty string is fine now (not required)
+        description: "",
         address: {},
         contactPerson: {},
         ojtSlots: [],
@@ -119,8 +112,6 @@ export const register = async (req, res, next) => {
         rating: { average: 0, count: 0 },
         isVerified: false,
       });
-
-      console.log("✅ Company created successfully:", newUser._id);
     } else {
       return res.status(400).json({
         success: false,
@@ -140,43 +131,16 @@ export const register = async (req, res, next) => {
       isRead: false,
     });
 
-    // Convert user to object and add role
-    const userObject = newUser.toObject();
-    userObject.role = role;
-
     res.status(201).json({
       success: true,
       message: "User registered successfully",
       data: {
-        user: userObject,
+        user: newUser,
         token,
       },
     });
   } catch (error) {
     console.error("Registration error:", error);
-
-    // Check if it's a database connection error
-    if (
-      error.name === "MongoNetworkError" ||
-      error.name === "MongoServerError"
-    ) {
-      return res.status(503).json({
-        success: false,
-        message: "Database connection error. Please try again later.",
-        error: "DATABASE_ERROR",
-      });
-    }
-
-    // Check if it's a validation error from Mongoose
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map((err) => err.message);
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors,
-      });
-    }
-
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -190,7 +154,6 @@ export const register = async (req, res, next) => {
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    console.log("🔐 Login attempt for email:", email);
 
     // Try to find user in Student collection first
     let user = await Student.findOne({ email });
@@ -198,35 +161,25 @@ export const login = async (req, res, next) => {
 
     // If not found in Student, try Company collection
     if (!user) {
-      console.log("👤 Not found in Student, trying Company...");
       user = await Company.findOne({ email });
       userRole = "company";
     }
 
     // If not found in Company, try User collection (admin)
     if (!user) {
-      console.log("👤 Not found in Company, trying Admin...");
       user = await User.findOne({ email });
       userRole = "admin";
     }
 
     if (!user) {
-      console.log("❌ User not found in any collection");
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
-    console.log("✅ User found:", {
-      id: user._id,
-      email: user.email,
-      role: userRole,
-    });
-
     // Check if user is active
     if (!user.isActive) {
-      console.log("❌ Account is deactivated");
       return res.status(401).json({
         success: false,
         message: "Account is deactivated",
@@ -236,14 +189,11 @@ export const login = async (req, res, next) => {
     // Check password
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      console.log("❌ Invalid password");
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
-
-    console.log("✅ Password valid");
 
     // Update last login
     user.lastLogin = new Date();
@@ -252,35 +202,16 @@ export const login = async (req, res, next) => {
     // Generate JWT token
     const token = generateToken(user._id, userRole);
 
-    // Convert user to object and add role
-    const userObject = user.toObject();
-    userObject.role = userRole;
-
-    console.log("🎉 Login successful! Role:", userRole);
-
     res.json({
       success: true,
       message: "Login successful",
       data: {
-        user: userObject,
+        user,
         token,
       },
     });
   } catch (error) {
-    console.error("❌ Login error:", error);
-
-    // Check if it's a database connection error
-    if (
-      error.name === "MongoNetworkError" ||
-      error.name === "MongoServerError"
-    ) {
-      return res.status(503).json({
-        success: false,
-        message: "Database connection error. Please try again later.",
-        error: "DATABASE_ERROR",
-      });
-    }
-
+    console.error("Login error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
@@ -351,50 +282,29 @@ export const getMe = async (req, res, next) => {
 // @access  Private
 export const updateProfile = async (req, res, next) => {
   try {
-    const updateData = { ...req.body };
-    // Prevent identity or sensitive field changes here
-    delete updateData.email;
-    delete updateData.password;
-    delete updateData.role;
-    console.log("🔍 Update profile request:", {
-      userId: req.user.id,
-      role: req.user.role,
-      updateDataKeys: Object.keys(updateData),
-      updateDataSample: Object.keys(updateData)
-        .slice(0, 5)
-        .reduce((obj, key) => {
-          obj[key] = updateData[key];
-          return obj;
-        }, {}),
-    });
-
+    const updateData = req.body;
     let user;
 
     // Update user based on role
     if (req.user.role === "student") {
-      console.log("🔍 Updating student profile");
       user = await Student.findByIdAndUpdate(
         req.user.id,
         { $set: updateData },
         { new: true, runValidators: true }
       );
     } else if (req.user.role === "company") {
-      console.log("🔍 Updating company profile");
       user = await Company.findByIdAndUpdate(
         req.user.id,
         { $set: updateData },
         { new: true, runValidators: true }
       );
     } else if (req.user.role === "admin") {
-      console.log("🔍 Updating admin profile");
       user = await User.findByIdAndUpdate(
         req.user.id,
         { $set: updateData },
         { new: true, runValidators: true }
       );
     }
-
-    console.log("🔍 Update result:", user ? "Success" : "User not found");
 
     if (!user) {
       return res.status(404).json({
@@ -411,17 +321,10 @@ export const updateProfile = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("❌ Update profile error:", error);
-    console.error("❌ Error details:", {
-      message: error.message,
-      name: error.name,
-      code: error.code,
-      stack: error.stack,
-    });
+    console.error("Update profile error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -626,3 +529,4 @@ export const resetPassword = async (req, res, next) => {
     });
   }
 };
+

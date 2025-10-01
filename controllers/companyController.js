@@ -4,36 +4,81 @@ import Company from "../models/Company.js";
 // Get company profile
 export const getCompanyProfile = async (req, res) => {
   try {
-    const company = await Company.findOne({ user: req.user._id }).populate(
-      "user"
-    );
+    console.log("🔍 Fetching company profile for user ID:", req.user.id);
+    console.log("🔍 User email:", req.user.email);
+
+    // Company model stores everything directly (no separate user reference)
+    // req.user.id is the Company document _id
+    const company = await Company.findById(req.user.id);
 
     if (!company) {
-      return res.status(404).json({ message: "Company profile not found" });
+      console.error("❌ Company profile not found for ID:", req.user.id);
+      return res.status(404).json({
+        success: false,
+        message: "Company profile not found",
+      });
     }
 
-    res.json(company);
+    console.log("✅ Company profile found:", company.companyName);
+    res.json({
+      success: true,
+      data: company,
+    });
   } catch (error) {
-    console.error("Error fetching company profile:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error fetching company profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
 // Update company profile
 export const updateCompanyProfile = async (req, res) => {
   try {
+    console.log("🔍 Updating company profile for user ID:", req.user.id);
     const updateData = req.body;
 
-    const company = await Company.findOneAndUpdate(
-      { user: req.user._id },
-      { $set: updateData },
-      { new: true, upsert: true, runValidators: true }
-    ).populate("user");
+    console.log("📝 Update data received:", {
+      ...updateData,
+      password: updateData.password ? "[REDACTED]" : undefined,
+    });
 
-    res.json(company);
+    // Prevent updating sensitive fields
+    delete updateData.password;
+    delete updateData.email;
+    delete updateData.verified;
+    delete updateData.isActive;
+
+    // Company model stores everything directly
+    const company = await Company.findByIdAndUpdate(
+      req.user.id,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    if (!company) {
+      console.error("❌ Company not found for ID:", req.user.id);
+      return res.status(404).json({
+        success: false,
+        message: "Company profile not found",
+      });
+    }
+
+    console.log("✅ Company profile updated:", company.companyName);
+    res.json({
+      success: true,
+      data: company,
+      message: "Profile updated successfully",
+    });
   } catch (error) {
-    console.error("Error updating company profile:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error updating company profile:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
@@ -212,27 +257,56 @@ export const deleteOjtSlot = async (req, res) => {
 export const addPreferredApplicant = async (req, res) => {
   try {
     const { id } = req.params;
-    const { studentId, reason } = req.body;
+    const { studentId, notes } = req.body;
+
+    console.log("➕ Adding preferred applicant:", {
+      companyId: id,
+      studentId,
+      notes,
+    });
 
     const company = await Company.findById(id);
     if (!company) {
-      return res.status(404).json({ message: "Company not found" });
+      console.log("❌ Company not found:", id);
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
+
+    // Check if student is already in preferredApplicants
+    const existingIndex = company.preferredApplicants.findIndex(
+      (app) => app.studentId.toString() === studentId
+    );
+
+    if (existingIndex !== -1) {
+      console.log("⚠️ Student already in preferred applicants");
+      return res.status(400).json({
+        success: false,
+        message: "Student already in preferred applicants",
+      });
     }
 
     const preferredApplicant = {
       studentId,
-      reason,
-      addedBy: req.user._id,
-      createdAt: new Date(),
+      notes,
+      addedAt: new Date(),
     };
 
     company.preferredApplicants.push(preferredApplicant);
     await company.save();
 
-    res.json({ message: "Preferred applicant added successfully" });
+    console.log("✅ Preferred applicant added successfully");
+    res.json({
+      success: true,
+      message: "Preferred applicant added successfully",
+    });
   } catch (error) {
-    console.error("Error adding preferred applicant:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error adding preferred applicant:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -240,6 +314,10 @@ export const addPreferredApplicant = async (req, res) => {
 export const removePreferredApplicant = async (req, res) => {
   try {
     const { id, studentId } = req.params;
+    console.log("🗑️ Removing preferred applicant:", {
+      companyId: id,
+      studentId,
+    });
 
     const company = await Company.findById(id);
     if (!company) {
@@ -251,10 +329,17 @@ export const removePreferredApplicant = async (req, res) => {
     );
     await company.save();
 
-    res.json({ message: "Preferred applicant removed successfully" });
+    console.log("✅ Preferred applicant removed successfully");
+    res.json({
+      success: true,
+      message: "Preferred applicant removed successfully",
+    });
   } catch (error) {
-    console.error("Error removing preferred applicant:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error removing preferred applicant:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -282,9 +367,3 @@ export const verifyCompany = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
-
-
-
-
-
-

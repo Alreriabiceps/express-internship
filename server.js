@@ -60,12 +60,25 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 // MongoDB connection
-mongoose
-  .connect(
-    process.env.MONGODB_URI || "mongodb://localhost:27017/internship-portal"
-  )
-  .then(() => console.log("✅ Connected to MongoDB"))
-  .catch((err) => console.error("❌ MongoDB connection error:", err));
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(
+      process.env.MONGODB_URI || "mongodb://localhost:27017/internship-portal"
+    );
+    console.log("✅ Connected to MongoDB:", conn.connection.host);
+
+    // Actually test the database with a real operation
+    await conn.connection.db.admin().ping();
+    console.log("✅ Database is responding to operations");
+  } catch (err) {
+    console.error("❌ MongoDB connection error:", err);
+    console.error("🚨 SERVER WILL NOT START WITHOUT DATABASE CONNECTION");
+    process.exit(1); // Exit the process if database connection fails
+  }
+};
+
+// Connect to database before starting server
+await connectDB();
 
 // Routes
 app.use("/api/auth", authRoutes);

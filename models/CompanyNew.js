@@ -66,7 +66,7 @@ const companySchema = new mongoose.Schema(
     },
     companySize: {
       type: String,
-      enum: ["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"],
+      enum: ["1-10", "11-50", "51-200", "201-500", "500+"],
       required: true,
     },
     website: {
@@ -78,61 +78,8 @@ const companySchema = new mongoose.Schema(
     },
     description: {
       type: String,
+      required: [true, "Company description is required"],
       maxlength: [1000, "Description cannot exceed 1000 characters"],
-    },
-    location: {
-      type: String,
-      trim: true,
-    },
-
-    // Internship program information
-    internPositions: {
-      type: Number,
-      min: [0, "Number of positions cannot be negative"],
-    },
-    internshipDuration: {
-      type: Number,
-      min: [0, "Duration cannot be negative"],
-    },
-    departments: {
-      type: String,
-      trim: true,
-    },
-    benefits: {
-      type: String,
-      maxlength: [500, "Benefits description cannot exceed 500 characters"],
-    },
-
-    // Skill requirements
-    skillsMustHave: {
-      type: String,
-      trim: true,
-    },
-    skillsPreferred: {
-      type: String,
-      trim: true,
-    },
-    skillsNiceToHave: {
-      type: String,
-      trim: true,
-    },
-
-    // Social media links
-    linkedinUrl: {
-      type: String,
-      trim: true,
-    },
-    facebookUrl: {
-      type: String,
-      trim: true,
-    },
-    twitterUrl: {
-      type: String,
-      trim: true,
-    },
-    instagramUrl: {
-      type: String,
-      trim: true,
     },
 
     // Address information
@@ -349,4 +296,4 @@ companySchema.methods.toJSON = function () {
   return companyObject;
 };
 
-export default mongoose.model("Company", companySchema);
+export default mongoose.model("CompanyNew", companySchema);

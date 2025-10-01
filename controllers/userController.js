@@ -55,7 +55,7 @@ export const getUserById = async (req, res) => {
     }
 
     // Check if user can access this profile
-    if (req.user.role !== "admin" && req.user._id.toString() !== id) {
+    if (req.user.role !== "admin" && req.user.id.toString() !== id) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -73,7 +73,7 @@ export const updateUser = async (req, res) => {
     const updateData = req.body;
 
     // Check if user can update this profile
-    if (req.user.role !== "admin" && req.user._id.toString() !== id) {
+    if (req.user.role !== "admin" && req.user.id.toString() !== id) {
       return res.status(403).json({ message: "Access denied" });
     }
 
@@ -113,7 +113,7 @@ export const deleteUser = async (req, res) => {
     }
 
     // Prevent admin from deleting themselves
-    if (req.user._id.toString() === id) {
+    if (req.user.id.toString() === id) {
       return res
         .status(400)
         .json({ message: "Cannot delete your own account" });
@@ -148,12 +148,33 @@ export const uploadProfilePicture = async (req, res) => {
       // Ignore cleanup errors
     }
 
-    // Update user profile
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { profilePicUrl: profilePictureUrl },
-      { new: true }
-    ).select("-password");
+    // Update user profile based on role
+    let user;
+    if (req.user.role === "student") {
+      const Student = (await import("../models/Student.js")).default;
+      user = await Student.findByIdAndUpdate(
+        req.user.id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      ).select("-password");
+    } else if (req.user.role === "company") {
+      const Company = (await import("../models/Company.js")).default;
+      user = await Company.findByIdAndUpdate(
+        req.user.id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      ).select("-password");
+    } else if (req.user.role === "admin") {
+      user = await User.findByIdAndUpdate(
+        req.user.id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      ).select("-password");
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     res.json({
       message: "Profile picture uploaded successfully",
