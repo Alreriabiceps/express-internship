@@ -152,6 +152,9 @@ export const uploadProfilePicture = async (req, res) => {
 
     console.log("☁️ Cloudinary upload successful:", profilePictureUrl);
 
+    // Resolve current user id from token (supports id or _id)
+    const userId = req.user?.id || req.user?._id;
+
     // If a temp file path exists (disk storage), try to remove it; ignore otherwise
     try {
       if (req.file?.path) {
@@ -173,19 +176,19 @@ export const uploadProfilePicture = async (req, res) => {
     // Update user profile based on role
     if (req.user.role === "student") {
       user = await Student.findByIdAndUpdate(
-        req.user._id,
+        userId,
         { profilePicUrl: profilePictureUrl },
         { new: true }
       );
     } else if (req.user.role === "company") {
       user = await Company.findByIdAndUpdate(
-        req.user._id,
+        userId,
         { profilePicUrl: profilePictureUrl },
         { new: true }
       );
     } else if (req.user.role === "admin") {
       user = await User.findByIdAndUpdate(
-        req.user._id,
+        userId,
         { profilePicUrl: profilePictureUrl },
         { new: true }
       ).select("-password");
