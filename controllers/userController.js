@@ -152,16 +152,15 @@ export const uploadProfilePicture = async (req, res) => {
 
     console.log("☁️ Cloudinary upload successful:", profilePictureUrl);
 
-    // Clean up temporary file
-    const fs = await import("fs");
+    // If a temp file path exists (disk storage), try to remove it; ignore otherwise
     try {
-      fs.unlinkSync(req.file.path);
-      console.log("🗑️ Temporary file cleaned up");
+      if (req.file?.path) {
+        const fs = await import("fs");
+        fs.unlinkSync(req.file.path);
+        console.log("🗑️ Temporary file cleaned up");
+      }
     } catch (cleanupError) {
-      console.warn(
-        "⚠️ Could not clean up temporary file:",
-        cleanupError.message
-      );
+      // Safe to ignore cleanup errors in serverless/container envs
     }
 
     // Import models

@@ -10,18 +10,11 @@ import {
 import { verifyToken, authorize } from "../middlewares/auth.js";
 import { upload } from "../utils/cloudinary.js";
 
-// Create disk storage for temporary files
-const diskStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
+// Use memory storage so we don't need a local uploads/ folder (works on Render)
+const memoryStorage = multer.memoryStorage();
 
-const diskUpload = multer({
-  storage: diskStorage,
+const memoryUpload = multer({
+  storage: memoryStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
@@ -46,25 +39,29 @@ router.get("/:id", getUserById);
 router.put("/:id", updateUser);
 router.delete("/:id", authorize("admin"), deleteUser);
 // Debug route to test multer
-router.post("/test-upload", diskUpload.single("profilePicture"), (req, res) => {
-  console.log("🚨 DEBUG: Test upload route hit");
-  console.log("  req.file:", req.file ? "Present" : "Missing");
-  if (req.file) {
-    console.log("  File details:", {
-      fieldname: req.file.fieldname,
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      path: req.file.path,
-    });
+router.post(
+  "/test-upload",
+  memoryUpload.single("profilePicture"),
+  (req, res) => {
+    console.log("🚨 DEBUG: Test upload route hit");
+    console.log("  req.file:", req.file ? "Present" : "Missing");
+    if (req.file) {
+      console.log("  File details:", {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        hasBuffer: !!req.file.buffer,
+      });
+    }
+    res.json({ message: "Test route hit", file: req.file });
   }
-  res.json({ message: "Test route hit", file: req.file });
-});
+);
 
 // Photo upload route
 router.post(
   "/upload-profile-picture",
-  diskUpload.single("profilePicture"),
+  memoryUpload.single("profilePicture"),
   uploadProfilePicture
 );
 
