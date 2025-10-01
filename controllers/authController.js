@@ -426,65 +426,6 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Upload profile picture
-// @route   POST /api/auth/upload-profile-picture
-// @access  Private
-export const uploadProfilePicture = async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "No file uploaded",
-      });
-    }
-
-    const profilePictureUrl = req.file.path;
-    let user;
-
-    // Update user based on role
-    if (req.user.role === "student") {
-      user = await Student.findByIdAndUpdate(
-        req.user.id,
-        { profilePicUrl: profilePictureUrl },
-        { new: true }
-      );
-    } else if (req.user.role === "company") {
-      user = await Company.findByIdAndUpdate(
-        req.user.id,
-        { profilePicUrl: profilePictureUrl },
-        { new: true }
-      );
-    } else if (req.user.role === "admin") {
-      user = await User.findByIdAndUpdate(
-        req.user.id,
-        { profilePicUrl: profilePictureUrl },
-        { new: true }
-      );
-    }
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Profile picture uploaded successfully",
-      data: {
-        profilePictureUrl,
-      },
-    });
-  } catch (error) {
-    console.error("Upload profile picture error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
-  }
-};
-
 // @desc    Change password
 // @route   PUT /api/auth/change-password
 // @access  Private
@@ -535,6 +476,10 @@ export const changePassword = async (req, res, next) => {
     });
   }
 };
+
+// Placeholder to avoid import errors in routes that may still reference this symbol.
+// Profile picture uploads are handled in users route via userController.uploadProfilePicture.
+export const uploadProfilePicture = undefined;
 
 // @desc    Forgot password
 // @route   POST /api/auth/forgot-password

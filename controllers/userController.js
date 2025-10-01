@@ -132,36 +132,87 @@ export const deleteUser = async (req, res) => {
 export const uploadProfilePicture = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
     }
+
+    console.log("📸 Upload request:", {
+      userId: req.user._id,
+      role: req.user.role,
+      file: req.file ? "Present" : "Missing",
+      fileName: req.file?.originalname,
+    });
 
     // Upload file to Cloudinary
     const { uploadToCloudinary } = await import("../utils/cloudinary.js");
     const result = await uploadToCloudinary(req.file);
     const profilePictureUrl = result.secure_url;
 
+    console.log("☁️ Cloudinary upload successful:", profilePictureUrl);
+
     // Clean up temporary file
     const fs = await import("fs");
     try {
       fs.unlinkSync(req.file.path);
+      console.log("🗑️ Temporary file cleaned up");
     } catch (cleanupError) {
-      // Ignore cleanup errors
+      console.warn(
+        "⚠️ Could not clean up temporary file:",
+        cleanupError.message
+      );
     }
 
-    // Update user profile
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      { profilePicUrl: profilePictureUrl },
-      { new: true }
-    ).select("-password");
+    // Import models
+    const Student = (await import("../models/Student.js")).default;
+    const Company = (await import("../models/Company.js")).default;
+    const User = (await import("../models/User.js")).default;
+
+    let user;
+
+    // Update user profile based on role
+    if (req.user.role === "student") {
+      user = await Student.findByIdAndUpdate(
+        req.user._id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      );
+    } else if (req.user.role === "company") {
+      user = await Company.findByIdAndUpdate(
+        req.user._id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      );
+    } else if (req.user.role === "admin") {
+      user = await User.findByIdAndUpdate(
+        req.user._id,
+        { profilePicUrl: profilePictureUrl },
+        { new: true }
+      ).select("-password");
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    console.log("✅ Profile picture updated successfully");
 
     res.json({
+      success: true,
       message: "Profile picture uploaded successfully",
       profilePictureUrl: profilePictureUrl,
       user,
     });
   } catch (error) {
-    console.error("Error uploading profile picture:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error uploading profile picture:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
   }
 };
