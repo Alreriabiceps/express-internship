@@ -17,13 +17,12 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin"],
+      enum: ["student", "company", "admin"],
       required: [true, "Role is required"],
-      default: "admin",
     },
     verified: {
       type: Boolean,
-      default: true, // Admin accounts are verified by default
+      default: false,
     },
     profilePicUrl: {
       type: String,
@@ -42,6 +41,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Last name is required"],
       trim: true,
+    },
+    age: {
+      type: Number,
+      min: [16, "Age must be at least 16"],
+      max: [100, "Age must be at most 100"],
+    },
+    sex: {
+      type: String,
+      enum: ["Male", "Female", "Other"],
     },
     phone: {
       type: String,
