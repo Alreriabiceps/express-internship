@@ -106,23 +106,30 @@ export const getAllCompanies = async (req, res) => {
       query.isVerified = isVerified === "true";
     }
 
+    console.log("📋 Fetching companies with query:", query);
+
     const companies = await Company.find(query)
-      .populate("user", "firstName lastName email phone profilePictureUrl")
       .limit(limit * 1)
       .skip((page - 1) * limit)
       .sort({ createdAt: -1 });
 
     const total = await Company.countDocuments(query);
 
+    console.log("✅ Found companies:", companies.length);
+
     res.json({
-      companies,
+      success: true,
+      data: companies,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total,
     });
   } catch (error) {
-    console.error("Error fetching companies:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error fetching companies:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -180,30 +187,62 @@ export const searchCompanies = async (req, res) => {
 // Add OJT slot
 export const addOjtSlot = async (req, res) => {
   try {
-    const { position, description, requirements, duration, startDate } =
-      req.body;
+    console.log("➕ Adding OJT slot, request body:", req.body);
+    console.log("👤 User ID:", req.user.id);
 
-    const company = await Company.findOne({ user: req.user._id });
+    const company = await Company.findById(req.user.id);
     if (!company) {
-      return res.status(404).json({ message: "Company profile not found" });
+      console.log("❌ Company not found");
+      return res.status(404).json({
+        success: false,
+        message: "Company profile not found",
+      });
     }
 
+    console.log("🏢 Company found:", company.companyName);
+
+    // Create slot with all required fields from req.body
     const slot = {
-      position,
-      description,
-      requirements,
-      duration,
-      startDate,
+      title: req.body.title,
+      description: req.body.description,
+      department: req.body.department,
+      duration: req.body.duration,
+      workType: req.body.workType,
+      startDate: req.body.startDate,
+      endDate: req.body.endDate,
+      location: req.body.location,
+      positions: req.body.positions || 1,
+      allowance: req.body.allowance || 0,
+      responsibilities: req.body.responsibilities || [],
+      qualifications: req.body.qualifications || [],
+      benefits: req.body.benefits || [],
+      skillRequirements: req.body.skillRequirements || {
+        mustHave: [],
+        preferred: [],
+        niceToHave: [],
+      },
+      applicationDeadline: req.body.applicationDeadline,
+      status: req.body.status || "open",
       createdAt: new Date(),
     };
+
+    console.log("📦 Slot to add:", slot);
 
     company.ojtSlots.push(slot);
     await company.save();
 
-    res.json({ message: "OJT slot added successfully" });
+    console.log("✅ OJT slot added successfully");
+    res.json({
+      success: true,
+      message: "OJT slot added successfully",
+      data: slot,
+    });
   } catch (error) {
-    console.error("Error adding OJT slot:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error adding OJT slot:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -213,23 +252,47 @@ export const updateOjtSlot = async (req, res) => {
     const { slotId } = req.params;
     const updateData = req.body;
 
-    const company = await Company.findOne({ user: req.user._id });
+    console.log("✏️ Updating OJT slot:", slotId);
+    console.log("📦 Update data:", updateData);
+
+    const company = await Company.findById(req.user.id);
     if (!company) {
-      return res.status(404).json({ message: "Company profile not found" });
+      console.log("❌ Company not found");
+      return res.status(404).json({
+        success: false,
+        message: "Company profile not found",
+      });
     }
+
+    console.log("🏢 Company found:", company.companyName);
 
     const slot = company.ojtSlots.id(slotId);
     if (!slot) {
-      return res.status(404).json({ message: "OJT slot not found" });
+      console.log("❌ Slot not found");
+      return res.status(404).json({
+        success: false,
+        message: "OJT slot not found",
+      });
     }
 
+    console.log("📋 Current slot:", slot.title);
+
+    // Update slot fields
     Object.assign(slot, updateData);
     await company.save();
 
-    res.json({ message: "OJT slot updated successfully" });
+    console.log("✅ OJT slot updated successfully");
+    res.json({
+      success: true,
+      message: "OJT slot updated successfully",
+      data: slot,
+    });
   } catch (error) {
-    console.error("Error updating OJT slot:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error updating OJT slot:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
@@ -237,19 +300,36 @@ export const updateOjtSlot = async (req, res) => {
 export const deleteOjtSlot = async (req, res) => {
   try {
     const { slotId } = req.params;
+    console.log("🗑️ Deleting OJT slot:", slotId);
 
-    const company = await Company.findOne({ user: req.user._id });
+    const company = await Company.findById(req.user.id);
     if (!company) {
-      return res.status(404).json({ message: "Company profile not found" });
+      console.log("❌ Company not found");
+      return res.status(404).json({
+        success: false,
+        message: "Company profile not found",
+      });
     }
+
+    console.log("🏢 Company found:", company.companyName);
+    console.log("📋 Current slots:", company.ojtSlots.length);
 
     company.ojtSlots.pull(slotId);
     await company.save();
 
-    res.json({ message: "OJT slot deleted successfully" });
+    console.log("✅ OJT slot deleted successfully");
+    console.log("📋 Remaining slots:", company.ojtSlots.length);
+
+    res.json({
+      success: true,
+      message: "OJT slot deleted successfully",
+    });
   } catch (error) {
-    console.error("Error deleting OJT slot:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error deleting OJT slot:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
   }
 };
 
