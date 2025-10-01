@@ -247,6 +247,35 @@ const companySchema = new mongoose.Schema(
           type: Date,
           required: true,
         },
+        location: {
+          type: String,
+          trim: true,
+        },
+        positions: {
+          type: Number,
+          default: 1,
+          min: [1, "At least 1 position is required"],
+        },
+        responsibilities: [
+          {
+            type: String,
+            trim: true,
+          },
+        ],
+        qualifications: [
+          {
+            type: String,
+            trim: true,
+          },
+        ],
+        applicationDeadline: {
+          type: Date,
+        },
+        status: {
+          type: String,
+          enum: ["open", "closed", "filled"],
+          default: "open",
+        },
         isActive: {
           type: Boolean,
           default: true,
@@ -259,6 +288,22 @@ const companySchema = new mongoose.Schema(
           type: Number,
           default: 0,
         },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+        applicants: [
+          {
+            studentId: {
+              type: mongoose.Schema.Types.ObjectId,
+              ref: "Student",
+            },
+            appliedAt: {
+              type: Date,
+              default: Date.now,
+            },
+          },
+        ],
       },
     ],
 

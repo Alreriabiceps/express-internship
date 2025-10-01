@@ -447,3 +447,68 @@ export const verifyCompany = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+// Apply to internship (called by student)
+export const applyToInternship = async (req, res) => {
+  try {
+    const { companyId, slotId } = req.params;
+    const studentId = req.user.id; // The logged-in student
+
+    console.log("📝 Student applying to internship:", {
+      studentId,
+      companyId,
+      slotId,
+    });
+
+    const company = await Company.findById(companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
+
+    const slot = company.ojtSlots.id(slotId);
+    if (!slot) {
+      return res.status(404).json({
+        success: false,
+        message: "Internship position not found",
+      });
+    }
+
+    // Check if student already applied
+    const alreadyApplied = slot.applicants.some(
+      (app) => app.studentId.toString() === studentId
+    );
+
+    if (alreadyApplied) {
+      return res.status(400).json({
+        success: false,
+        message: "You have already applied to this position",
+      });
+    }
+
+    // Add student to applicants
+    slot.applicants.push({
+      studentId,
+      appliedAt: new Date(),
+    });
+
+    // Update current applicants count
+    slot.currentApplicants = slot.applicants.length;
+
+    await company.save();
+
+    console.log("✅ Application submitted successfully");
+    res.json({
+      success: true,
+      message: "Application submitted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error applying to internship:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};

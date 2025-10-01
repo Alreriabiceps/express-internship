@@ -11,6 +11,7 @@ import {
   addPreferredApplicant,
   removePreferredApplicant,
   verifyCompany,
+  applyToInternship,
 } from "../controllers/companyController.js";
 import { verifyToken, authorize } from "../middlewares/auth.js";
 
@@ -39,12 +40,10 @@ router.delete(
   removePreferredApplicant
 );
 router.put("/:id/verify", authorize("admin"), verifyCompany);
+router.post(
+  "/:companyId/slots/:slotId/apply",
+  authorize("student"),
+  applyToInternship
+);
 
 export default router;
-
-
-
-
-
-
-
