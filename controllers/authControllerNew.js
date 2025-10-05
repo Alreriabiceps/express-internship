@@ -155,20 +155,22 @@ export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Try to find user in Student collection first
-    let user = await Student.findOne({ email });
-    let userRole = "student";
+    // Try to find user in User collection first (covers all roles)
+    let user = await User.findOne({ email });
+    let userRole = user ? user.role : null;
 
-    // If not found in Student, try Company collection
+    // If not found in User collection, try Student collection (legacy)
     if (!user) {
-      user = await Company.findOne({ email });
-      userRole = "company";
+      console.log("👤 Not found in User, trying Student collection...");
+      user = await Student.findOne({ email });
+      userRole = "student";
     }
 
-    // If not found in Company, try User collection (admin)
+    // If not found in Student, try Company collection (legacy)
     if (!user) {
-      user = await User.findOne({ email });
-      userRole = "admin";
+      console.log("👤 Not found in Student, trying Company collection...");
+      user = await Company.findOne({ email });
+      userRole = "company";
     }
 
     if (!user) {
@@ -529,4 +531,3 @@ export const resetPassword = async (req, res, next) => {
     });
   }
 };
-

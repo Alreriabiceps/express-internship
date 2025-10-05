@@ -19,18 +19,16 @@ const checkUsers = async () => {
       console.log(`- ${user.email} (${user.role}) - Active: ${user.isActive}`);
     });
 
-    // Check specific admin user
-    const admin = await User.findOne({ email: "admin@test.com" });
-    if (admin) {
-      console.log("\nAdmin user found:");
+    // Check for admin users
+    const admins = await User.find({ role: "admin" });
+    console.log(`\nFound ${admins.length} admin users:`);
+    admins.forEach((admin) => {
       console.log(`- Email: ${admin.email}`);
       console.log(`- Role: ${admin.role}`);
       console.log(`- Active: ${admin.isActive}`);
       console.log(`- Verified: ${admin.verified}`);
       console.log(`- Has password: ${admin.password ? "Yes" : "No"}`);
-    } else {
-      console.log("\nAdmin user NOT found!");
-    }
+    });
   } catch (error) {
     console.error("Error checking users:", error);
   } finally {

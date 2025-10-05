@@ -89,16 +89,26 @@ const studentSchema = new mongoose.Schema(
           trim: true,
         },
         level: {
-          type: String,
-          enum: ["Beginner", "Intermediate", "Advanced", "Expert"],
-          default: "Beginner",
+          type: Number,
+          min: 1,
+          max: 5,
+          default: 1,
         },
       },
     ],
     softSkills: [
       {
-        type: String,
-        trim: true,
+        name: {
+          type: String,
+          required: true,
+          trim: true,
+        },
+        level: {
+          type: Number,
+          min: 1,
+          max: 5,
+          default: 1,
+        },
       },
     ],
 
@@ -279,7 +289,7 @@ const studentSchema = new mongoose.Schema(
 // Index for search functionality
 studentSchema.index({
   "skills.name": "text",
-  softSkills: "text",
+  "softSkills.name": "text",
   program: "text",
   "preferredFields.location": "text",
   firstName: "text",

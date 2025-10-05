@@ -33,9 +33,13 @@ const server = createServer(app);
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000",
   "https://ecainternship.vercel.app",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
+
+console.log("🌐 Allowed CORS origins:", allowedOrigins);
 
 const io = new Server(server, {
   cors: {
@@ -47,24 +51,40 @@ const io = new Server(server, {
 
 // Security middleware
 app.use(helmet());
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
+// CORS configuration
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      console.log("✅ Allowing request with no origin");
+      return callback(null, true);
+    }
 
-      if (
-        allowedOrigins.indexOf(origin) !== -1 ||
-        allowedOrigins.includes(origin)
-      ) {
+    console.log(`🔍 Checking origin: ${origin}`);
+
+    // Check if origin is in allowed origins
+    if (allowedOrigins.includes(origin)) {
+      console.log(`✅ Origin allowed: ${origin}`);
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS blocked origin: ${origin}`);
+      console.log(`✅ Allowed origins: ${allowedOrigins.join(", ")}`);
+
+      // In development, be more permissive
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`⚠️ Development mode: Allowing origin ${origin}`);
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
       }
-    },
-    credentials: true,
-  })
-);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting
 const limiter = rateLimit({
