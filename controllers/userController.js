@@ -218,3 +218,42 @@ export const uploadProfilePicture = async (req, res) => {
     });
   }
 };
+
+// @desc    Upload generic file (for certificates, badges, etc.)
+// @route   POST /api/users/upload-file
+// @access  Private
+export const uploadFile = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded",
+      });
+    }
+
+    console.log("📁 File upload request:", {
+      originalName: req.file?.originalname,
+      mimetype: req.file?.mimetype,
+      size: req.file?.size,
+    });
+
+    const { uploadToCloudinary } = await import("../utils/cloudinary.js");
+    const result = await uploadToCloudinary(req.file);
+    const fileUrl = result.secure_url;
+
+    console.log("☁️ Cloudinary upload successful:", fileUrl);
+
+    res.status(200).json({
+      success: true,
+      message: "File uploaded successfully",
+      fileUrl: fileUrl,
+    });
+  } catch (error) {
+    console.error("❌ Error uploading file:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};

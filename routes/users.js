@@ -6,6 +6,7 @@ import {
   updateUser,
   deleteUser,
   uploadProfilePicture,
+  uploadFile,
 } from "../controllers/userController.js";
 import { verifyToken, authorize } from "../middlewares/auth.js";
 import { upload } from "../utils/cloudinary.js";
@@ -64,6 +65,9 @@ router.post(
   memoryUpload.single("profilePicture"),
   uploadProfilePicture
 );
+
+// Generic file upload route (for certificates, badges, etc.)
+router.post("/upload-file", memoryUpload.single("file"), uploadFile);
 
 // Error handling middleware for multer
 router.use((error, req, res, next) => {
