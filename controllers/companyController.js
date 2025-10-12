@@ -137,16 +137,30 @@ export const getAllCompanies = async (req, res) => {
 export const getCompanyById = async (req, res) => {
   try {
     const { id } = req.params;
-    const company = await Company.findById(id).populate("user");
+    console.log("🔍 Fetching company by ID:", id);
+
+    const company = await Company.findById(id);
 
     if (!company) {
-      return res.status(404).json({ message: "Company not found" });
+      console.log("❌ Company not found for ID:", id);
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
     }
 
-    res.json(company);
+    console.log("✅ Company found:", company.companyName);
+    res.json({
+      success: true,
+      data: company,
+    });
   } catch (error) {
-    console.error("Error fetching company:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("❌ Error fetching company:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 

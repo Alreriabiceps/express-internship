@@ -368,3 +368,47 @@ export const declineCompanyInterest = async (req, res) => {
     });
   }
 };
+
+// Get student's applications
+export const getStudentApplications = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+    console.log("🎯 Getting applications for student:", studentId);
+
+    // Find all companies that have this student in their applicants
+    const companies = await Company.find({
+      "ojtSlots.applicants.studentId": studentId,
+    });
+
+    const applications = [];
+    companies.forEach((company) => {
+      company.ojtSlots.forEach((slot) => {
+        const application = slot.applicants.find(
+          (app) => app.studentId.toString() === studentId
+        );
+        if (application) {
+          applications.push({
+            companyId: company._id,
+            companyName: company.companyName,
+            slotId: slot._id,
+            slotTitle: slot.title,
+            appliedAt: application.appliedAt,
+            status: "pending", // Default status
+          });
+        }
+      });
+    });
+
+    console.log(`Found ${applications.length} applications for student`);
+    res.json({
+      success: true,
+      data: applications,
+    });
+  } catch (error) {
+    console.error("Error getting student applications:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};

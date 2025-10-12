@@ -12,6 +12,7 @@ import {
   getInterestedCompanies,
   acceptCompanyInterest,
   declineCompanyInterest,
+  getStudentApplications,
 } from "../controllers/studentController.js";
 import { verifyToken, authorize } from "../middlewares/auth.js";
 
@@ -46,6 +47,7 @@ router.post(
   authorize("student"),
   declineCompanyInterest
 );
+router.get("/applications", authorize("student"), getStudentApplications);
 
 // Parameterized routes - MUST come after specific routes
 router.get("/:id", authorize(["admin", "company", "student"]), getStudentById);
