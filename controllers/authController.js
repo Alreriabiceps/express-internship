@@ -477,6 +477,66 @@ export const changePassword = async (req, res, next) => {
   }
 };
 
+// @desc    Change user email
+// @route   PUT /api/auth/change-email
+// @access  Private
+export const changeEmail = async (req, res, next) => {
+  try {
+    const { newEmail, currentPassword } = req.body;
+
+    let user;
+
+    // Find user based on role
+    if (req.user.role === "student") {
+      user = await Student.findById(req.user.id);
+    } else if (req.user.role === "company") {
+      user = await Company.findById(req.user.id);
+    } else if (req.user.role === "admin") {
+      user = await User.findById(req.user.id);
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Check current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Check if new email already exists
+    const existingUser = await User.findOne({ email: newEmail });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists",
+      });
+    }
+
+    // Update email
+    user.email = newEmail;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Email changed successfully",
+    });
+  } catch (error) {
+    console.error("Change email error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 // Placeholder to avoid import errors in routes that may still reference this symbol.
 // Profile picture uploads are handled in users route via userController.uploadProfilePicture.
 export const uploadProfilePicture = undefined;

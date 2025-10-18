@@ -292,6 +292,26 @@ const companySchema = new mongoose.Schema(
           type: Date,
           default: Date.now,
         },
+        // Admin approval fields
+        approvalStatus: {
+          type: String,
+          enum: ["pending", "approved", "rejected"],
+          default: "pending",
+        },
+        approvedAt: {
+          type: Date,
+          default: null,
+        },
+        approvedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          default: null,
+        },
+        rejectionReason: {
+          type: String,
+          trim: true,
+          default: null,
+        },
         applicants: [
           {
             studentId: {
@@ -348,6 +368,48 @@ const companySchema = new mongoose.Schema(
     verificationNotes: {
       type: String,
       trim: true,
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    verificationConditions: {
+      businessRegistration: {
+        type: Boolean,
+        default: false,
+      },
+      contactVerification: {
+        type: Boolean,
+        default: false,
+      },
+      websiteValidation: {
+        type: Boolean,
+        default: false,
+      },
+      representativeAuthorization: {
+        type: Boolean,
+        default: false,
+      },
+      documentationReview: {
+        type: Boolean,
+        default: false,
+      },
+    },
+
+    // Profile visibility
+    isProfileHidden: {
+      type: Boolean,
+      default: false,
     },
   },
   {

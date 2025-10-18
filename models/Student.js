@@ -280,6 +280,18 @@ const studentSchema = new mongoose.Schema(
     availabilityDate: {
       type: Date,
     },
+
+    // Profile visibility
+    isProfileHidden: {
+      type: Boolean,
+      default: false,
+    },
+
+    // Internship readiness
+    isInternshipReady: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

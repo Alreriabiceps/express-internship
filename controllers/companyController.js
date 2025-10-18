@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import Company from "../models/Company.js";
+import Notification from "../models/Notification.js";
 
 // Get company profile
 export const getCompanyProfile = async (req, res) => {
@@ -117,9 +118,23 @@ export const getAllCompanies = async (req, res) => {
 
     console.log("✅ Found companies:", companies.length);
 
+    // Filter out non-approved internships for students
+    let filteredCompanies = companies;
+    if (req.user.role === "student") {
+      filteredCompanies = companies.map((company) => {
+        const filteredSlots = company.ojtSlots.filter(
+          (slot) => slot.approvalStatus === "approved" && slot.isActive
+        );
+        return {
+          ...company.toObject(),
+          ojtSlots: filteredSlots,
+        };
+      });
+    }
+
     res.json({
       success: true,
-      data: companies,
+      data: filteredCompanies,
       totalPages: Math.ceil(total / limit),
       currentPage: page,
       total,
@@ -237,6 +252,7 @@ export const addOjtSlot = async (req, res) => {
       },
       applicationDeadline: req.body.applicationDeadline,
       status: req.body.status || "open",
+      approvalStatus: "pending", // Require admin approval
       createdAt: new Date(),
     };
 
@@ -248,7 +264,8 @@ export const addOjtSlot = async (req, res) => {
     console.log("✅ OJT slot added successfully");
     res.json({
       success: true,
-      message: "OJT slot added successfully",
+      message:
+        "Internship posting submitted successfully! It will be reviewed by an administrator before going live.",
       data: slot,
     });
   } catch (error) {
@@ -443,22 +460,65 @@ export const verifyCompany = async (req, res) => {
     const { id } = req.params;
     const { isVerified, verificationNotes } = req.body;
 
+    console.log("Verification request:", {
+      id,
+      isVerified,
+      verificationNotes,
+    });
+
     const company = await Company.findById(id);
     if (!company) {
-      return res.status(404).json({ message: "Company not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
     }
 
+    // Manual verification/rejection
     company.isVerified = isVerified;
-    company.verificationNotes = verificationNotes;
+    company.verificationNotes =
+      verificationNotes ||
+      (isVerified ? "Manually verified" : "Manually rejected");
     company.verifiedAt = new Date();
-    company.verifiedBy = req.user._id;
+    company.verifiedBy = req.user.id;
+    company.verificationStatus = isVerified ? "approved" : "rejected";
 
     await company.save();
 
-    res.json({ message: "Company verification updated successfully" });
+    // Create notification for verification
+    await Notification.create({
+      userId: company._id,
+      title: isVerified ? "Account Verified" : "Account Verification Rejected",
+      message: isVerified
+        ? "Your company account has been verified successfully! You now have access to all platform features."
+        : "Your company account verification was rejected.",
+      type: "verification",
+      priority: "high",
+      isRead: false,
+    });
+
+    res.json({
+      success: true,
+      message: `Company ${
+        isVerified ? "verified" : "verification rejected"
+      } successfully`,
+      data: {
+        isVerified: company.isVerified,
+        verificationStatus: company.verificationStatus,
+        verifiedAt: company.verifiedAt,
+      },
+    });
   } catch (error) {
     console.error("Error verifying company:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error stack:", error.stack);
+    console.error("Request body:", req.body);
+    console.error("Request params:", req.params);
+    console.error("Request user:", req.user);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 

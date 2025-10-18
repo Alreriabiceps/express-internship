@@ -7,6 +7,7 @@ import {
   getMe,
   updateProfile,
   changePassword,
+  changeEmail,
   forgotPassword,
   resetPassword,
 } from "../controllers/authController.js";
@@ -65,7 +66,7 @@ const registerValidation = [
     .withMessage("Industry is required for companies"),
   body("companySize")
     .if(body("role").equals("company"))
-    .isIn(["1-10", "11-50", "51-200", "201-500", "500+"])
+    .isIn(["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"])
     .withMessage("Invalid company size"),
 ];
 
@@ -86,6 +87,16 @@ const changePasswordValidation = [
     .withMessage("New password must be at least 6 characters"),
 ];
 
+const changeEmailValidation = [
+  body("newEmail")
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Please provide a valid email"),
+  body("currentPassword")
+    .notEmpty()
+    .withMessage("Current password is required"),
+];
+
 // Routes
 router.post("/register", registerValidation, register);
 router.post("/login", loginValidation, login);
@@ -98,6 +109,7 @@ router.put(
   changePasswordValidation,
   changePassword
 );
+router.put("/change-email", verifyToken, changeEmailValidation, changeEmail);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 
