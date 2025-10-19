@@ -61,6 +61,9 @@ export const updateStudentProfile = async (req, res) => {
 export const getAllStudents = async (req, res) => {
   try {
     const { page = 1, limit = 10, program, yearLevel, skills } = req.query;
+    const numericLimit = parseInt(limit, 10) || 10;
+    const numericPage = parseInt(page, 10) || 1;
+    const skip = (numericPage - 1) * numericLimit;
     const query = {};
 
     if (program) {
@@ -76,16 +79,17 @@ export const getAllStudents = async (req, res) => {
     }
 
     const students = await Student.find(query)
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
+      .sort({ isInternshipReady: -1, createdAt: 1 })
+      .skip(skip)
+      .limit(numericLimit)
+      .lean();
 
     const total = await Student.countDocuments(query);
 
     res.json({
       students,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      totalPages: Math.ceil(total / numericLimit),
+      currentPage: numericPage,
       total,
     });
   } catch (error) {
@@ -139,8 +143,9 @@ export const searchStudents = async (req, res) => {
     }
 
     const students = await Student.find(query)
+      .sort({ isInternshipReady: -1, createdAt: 1 })
       .limit(20)
-      .sort({ createdAt: -1 });
+      .lean();
 
     res.json(students);
   } catch (error) {

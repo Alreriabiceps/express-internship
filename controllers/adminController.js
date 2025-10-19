@@ -300,9 +300,10 @@ export const getAllStudents = async (req, res) => {
 
     const students = await Student.find(query)
       .select("-password")
-      .sort({ createdAt: -1 })
+      .sort({ isInternshipReady: -1, createdAt: 1 })
+      .skip((page - 1) * limit)
       .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .lean();
 
     const total = await Student.countDocuments(query);
 
@@ -467,6 +468,60 @@ export const toggleStudentInternshipReadiness = async (req, res) => {
     });
   } catch (error) {
     console.error("Error toggling internship readiness:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
+// Update admin readiness checklist
+export const updateAdminReadinessChecklist = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { profileCompleted, documentsCompleted, readyForDeployment } =
+      req.body;
+
+    const student = await Student.findById(id);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Initialize adminReadinessChecklist if it doesn't exist
+    if (!student.adminReadinessChecklist) {
+      student.adminReadinessChecklist = {
+        profileCompleted: false,
+        documentsCompleted: false,
+        readyForDeployment: false,
+      };
+    }
+
+    // Update the checklist
+    if (profileCompleted !== undefined) {
+      student.adminReadinessChecklist.profileCompleted = profileCompleted;
+    }
+    if (documentsCompleted !== undefined) {
+      student.adminReadinessChecklist.documentsCompleted = documentsCompleted;
+    }
+    if (readyForDeployment !== undefined) {
+      student.adminReadinessChecklist.readyForDeployment = readyForDeployment;
+    }
+
+    // Save will trigger the pre-save hook that updates isInternshipReady
+    await student.save();
+
+    res.json({
+      success: true,
+      message: "Admin readiness checklist updated",
+      adminReadinessChecklist: student.adminReadinessChecklist,
+      isInternshipReady: student.isInternshipReady,
+    });
+  } catch (error) {
+    console.error("Error updating admin readiness checklist:", error);
     res.status(500).json({
       success: false,
       message: "Server error",

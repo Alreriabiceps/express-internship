@@ -204,6 +204,22 @@ const studentSchema = new mongoose.Schema(
       },
     ],
 
+    // Admin readiness checklist (for marking student as internship ready)
+    adminReadinessChecklist: {
+      profileCompleted: {
+        type: Boolean,
+        default: false,
+      },
+      documentsCompleted: {
+        type: Boolean,
+        default: false,
+      },
+      readyForDeployment: {
+        type: Boolean,
+        default: false,
+      },
+    },
+
     // Endorsements
     endorsements: [
       {
@@ -306,6 +322,31 @@ studentSchema.index({
   "preferredFields.location": "text",
   firstName: "text",
   lastName: "text",
+});
+
+// Compound index to support sorting by readiness then creation date
+studentSchema.index({ isInternshipReady: -1, createdAt: 1 });
+
+// Automatically set isInternshipReady based on admin checklist
+studentSchema.pre("save", function (next) {
+  // Check if all admin readiness checklist items are completed
+  if (
+    this.adminReadinessChecklist &&
+    this.adminReadinessChecklist.profileCompleted &&
+    this.adminReadinessChecklist.documentsCompleted &&
+    this.adminReadinessChecklist.readyForDeployment
+  ) {
+    this.isInternshipReady = true;
+  } else if (
+    this.adminReadinessChecklist &&
+    (!this.adminReadinessChecklist.profileCompleted ||
+      !this.adminReadinessChecklist.documentsCompleted ||
+      !this.adminReadinessChecklist.readyForDeployment)
+  ) {
+    // If any checkbox is unchecked, set to not ready
+    this.isInternshipReady = false;
+  }
+  next();
 });
 
 // Hash password before saving

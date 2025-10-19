@@ -7,6 +7,7 @@ import {
   getStudentDetails,
   toggleStudentProfileVisibility,
   toggleStudentInternshipReadiness,
+  updateAdminReadinessChecklist,
   toggleCompanyProfileVisibility,
   resetStudentPassword,
   resetCompanyPassword,
@@ -40,6 +41,10 @@ router.get("/companies", getAllCompanies);
 router.get("/students/:id", getStudentDetails);
 router.put("/students/:id/toggle-visibility", toggleStudentProfileVisibility);
 router.put("/students/:id/toggle-readiness", toggleStudentInternshipReadiness);
+router.put(
+  "/students/:id/admin-readiness-checklist",
+  updateAdminReadinessChecklist
+);
 router.put("/students/:id/reset-password", resetStudentPassword);
 router.put("/companies/:id/toggle-visibility", toggleCompanyProfileVisibility);
 router.put("/companies/:id/reset-password", resetCompanyPassword);

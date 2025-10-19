@@ -105,7 +105,8 @@ app.use(cookieParser());
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(
-      process.env.MONGODB_URI || "mongodb://localhost:27017/internship-portal"
+      process.env.MONGODB_URI ||
+        "mongodb+srv://ecainternship1:coqWBAfvldNb4GUj@cluster0.muqh00a.mongodb.net/ecainternship?retryWrites=true&w=majority"
     );
     console.log("✅ Connected to MongoDB:", conn.connection.host);
 
