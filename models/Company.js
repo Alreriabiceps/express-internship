@@ -292,26 +292,6 @@ const companySchema = new mongoose.Schema(
           type: Date,
           default: Date.now,
         },
-        // Admin approval fields
-        approvalStatus: {
-          type: String,
-          enum: ["pending", "approved", "rejected"],
-          default: "pending",
-        },
-        approvedAt: {
-          type: Date,
-          default: null,
-        },
-        approvedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
-          default: null,
-        },
-        rejectionReason: {
-          type: String,
-          trim: true,
-          default: null,
-        },
         applicants: [
           {
             studentId: {
