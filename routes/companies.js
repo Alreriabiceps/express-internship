@@ -12,6 +12,9 @@ import {
   removePreferredApplicant,
   verifyCompany,
   applyToInternship,
+  getCompanyEvaluations,
+  getCompanyEvaluationById,
+  updateCompanyEvaluation,
 } from "../controllers/companyController.js";
 import { verifyToken, authorize } from "../middlewares/auth.js";
 
@@ -25,7 +28,20 @@ router.get("/profile", authorize("company"), getCompanyProfile);
 router.put("/profile", authorize("company"), updateCompanyProfile);
 router.get("/", authorize(["admin", "student"]), getAllCompanies);
 router.get("/search", authorize(["admin", "student"]), searchCompanies);
-router.get("/:id", authorize(["admin", "student"]), getCompanyById);
+
+// Company evaluations - MUST come before /:id route to avoid route conflicts
+router.get("/evaluations", authorize("company"), getCompanyEvaluations);
+router.get(
+  "/evaluations/:evaluationId",
+  authorize("company"),
+  getCompanyEvaluationById
+);
+router.put(
+  "/evaluations/:evaluationId",
+  authorize("company"),
+  updateCompanyEvaluation
+);
+
 router.post("/slots", authorize("company"), addOjtSlot);
 router.put("/slots/:slotId", authorize("company"), updateOjtSlot);
 router.delete("/slots/:slotId", authorize("company"), deleteOjtSlot);
@@ -45,5 +61,8 @@ router.post(
   authorize("student"),
   applyToInternship
 );
+
+// This must be last to catch all other /:id routes
+router.get("/:id", authorize(["admin", "student"]), getCompanyById);
 
 export default router;

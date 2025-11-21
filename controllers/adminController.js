@@ -2,6 +2,8 @@ import User from "../models/User.js";
 import Student from "../models/Student.js";
 import Company from "../models/Company.js";
 import Notification from "../models/Notification.js";
+import EvaluationTemplate from "../models/EvaluationTemplate.js";
+import StudentEvaluation from "../models/StudentEvaluation.js";
 
 // Get dashboard statistics
 export const getDashboardStats = async (req, res) => {
@@ -784,12 +786,28 @@ export const getReports = async (req, res) => {
   try {
     const { type, startDate, endDate, period = "month" } = req.query;
 
-    // Date range setup - more flexible
+    // Date range setup - more flexible and accurate
     const dateQuery = {};
     if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      // Set end date to end of day
+      end.setHours(23, 59, 59, 999);
+      dateQuery.createdAt = {
+        $gte: start,
+        $lte: end,
+      };
+    } else if (startDate) {
+      // Only start date provided
       dateQuery.createdAt = {
         $gte: new Date(startDate),
-        $lte: new Date(endDate),
+      };
+    } else if (endDate) {
+      // Only end date provided
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      dateQuery.createdAt = {
+        $lte: end,
       };
     } else {
       // Default to all time if no date range provided
@@ -811,6 +829,10 @@ export const getReports = async (req, res) => {
           internshipReadyStudents,
           hiddenStudents,
           hiddenCompanies,
+          activeUsers,
+          totalPostings,
+          totalApplications,
+          totalEvaluations,
         ] = await Promise.all([
           User.countDocuments(),
           Student.countDocuments(),
@@ -820,6 +842,40 @@ export const getReports = async (req, res) => {
           Student.countDocuments({ isInternshipReady: true }),
           Student.countDocuments({ isProfileHidden: true }),
           Company.countDocuments({ isProfileHidden: true }),
+          User.countDocuments({ isActive: true }),
+          // Count total internship postings
+          Company.aggregate([
+            { $unwind: { path: "$ojtSlots", preserveNullAndEmptyArrays: false } },
+            { $count: "total" },
+          ]).then((result) => result[0]?.total || 0),
+          // Count total applications (preferred applicants)
+          Company.aggregate([
+            { $unwind: { path: "$preferredApplicants", preserveNullAndEmptyArrays: false } },
+            { $count: "total" },
+          ]).then((result) => result[0]?.total || 0),
+          StudentEvaluation.countDocuments(),
+        ]);
+
+        // Get recent activity (last 30 days)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const [
+          recentUsers,
+          recentStudents,
+          recentCompanies,
+          recentPostings,
+          recentEvaluations,
+        ] = await Promise.all([
+          User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+          Student.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+          Company.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+          Company.aggregate([
+            { $unwind: { path: "$ojtSlots", preserveNullAndEmptyArrays: false } },
+            { $match: { "ojtSlots.createdAt": { $gte: thirtyDaysAgo } } },
+            { $count: "total" },
+          ]).then((result) => result[0]?.total || 0),
+          StudentEvaluation.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
         ]);
 
         report = {
@@ -832,6 +888,10 @@ export const getReports = async (req, res) => {
             internshipReadyStudents,
             hiddenStudents,
             hiddenCompanies,
+            activeUsers,
+            totalPostings,
+            totalApplications,
+            totalEvaluations,
             verificationRate:
               totalCompanies > 0
                 ? ((verifiedCompanies / totalCompanies) * 100).toFixed(1)
@@ -840,21 +900,43 @@ export const getReports = async (req, res) => {
               totalStudents > 0
                 ? ((internshipReadyStudents / totalStudents) * 100).toFixed(1)
                 : 0,
+            activeUserRate:
+              totalUsers > 0
+                ? ((activeUsers / totalUsers) * 100).toFixed(1)
+                : 0,
+            recentActivity: {
+              users: recentUsers,
+              students: recentStudents,
+              companies: recentCompanies,
+              postings: recentPostings,
+              evaluations: recentEvaluations,
+            },
           },
         };
         break;
 
       case "user-registrations":
         // User registration trends
+        const registrationGroupId = period === "day" 
+          ? {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+              day: { $dayOfMonth: "$createdAt" },
+            }
+          : period === "year"
+          ? {
+              year: { $year: "$createdAt" },
+            }
+          : {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+            };
+
         const registrationPipeline = [
           { $match: dateQuery },
           {
             $group: {
-              _id: {
-                year: { $year: "$createdAt" },
-                month: { $month: "$createdAt" },
-                day: period === "day" ? { $dayOfMonth: "$createdAt" } : null,
-              },
+              _id: registrationGroupId,
               count: { $sum: 1 },
               students: {
                 $sum: { $cond: [{ $eq: ["$role", "student"] }, 1, 0] },
@@ -865,47 +947,133 @@ export const getReports = async (req, res) => {
               admins: { $sum: { $cond: [{ $eq: ["$role", "admin"] }, 1, 0] } },
             },
           },
-          { $sort: { "_id.year": 1, "_id.month": 1, "_id.day": 1 } },
+          { 
+            $sort: period === "day" 
+              ? { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+              : period === "year"
+              ? { "_id.year": 1 }
+              : { "_id.year": 1, "_id.month": 1 }
+          },
         ];
 
         const registrations = await User.aggregate(registrationPipeline);
-        report = { registrations };
+        // Format dates for better display
+        const formattedRegistrations = registrations.map((reg) => {
+          const dateLabel = period === "day"
+            ? `${reg._id.year}-${String(reg._id.month).padStart(2, "0")}-${String(reg._id.day).padStart(2, "0")}`
+            : period === "year"
+            ? `${reg._id.year}`
+            : `${reg._id.year}-${String(reg._id.month).padStart(2, "0")}`;
+          return {
+            ...reg,
+            dateLabel,
+          };
+        });
+        report = { registrations: formattedRegistrations };
         break;
 
       case "student-programs":
-        // Student program distribution
+        // Student program distribution - use actual courses from database
         const programStats = await Student.aggregate([
+          { $match: { program: { $exists: true, $ne: null, $ne: "" } } },
           { $group: { _id: "$program", count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
         ]);
-        report = { programStats };
+        
+        // Get all unique programs from database to ensure we show all courses
+        const allProgramsInSystem = await Student.distinct("program", {
+          program: { $exists: true, $ne: null, $ne: "" },
+        });
+        
+        // Create a map of existing stats
+        const programStatsMap = {};
+        programStats.forEach((stat) => {
+          programStatsMap[stat._id] = stat.count;
+        });
+        
+        // Combine: include all programs from system, even if they have 0 students
+        const allProgramStats = allProgramsInSystem.map((program) => ({
+          _id: program,
+          count: programStatsMap[program] || 0,
+        }));
+        
+        // Add percentage calculation
+        const totalStudentsForPrograms = allProgramStats.reduce((sum, p) => sum + p.count, 0);
+        const programStatsWithPercent = allProgramStats
+          .map((p) => ({
+            ...p,
+            percentage: totalStudentsForPrograms > 0 
+              ? ((p.count / totalStudentsForPrograms) * 100).toFixed(1)
+              : 0,
+          }))
+          .sort((a, b) => {
+            // Sort by count (descending), then alphabetically
+            if (b.count !== a.count) return b.count - a.count;
+            return a._id.localeCompare(b._id);
+          });
+        
+        report = { programStats: programStatsWithPercent };
         break;
 
       case "student-year-levels":
         // Student year level distribution
         const yearLevelStats = await Student.aggregate([
+          { $match: { yearLevel: { $exists: true, $ne: null, $ne: "" } } },
           { $group: { _id: "$yearLevel", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
         ]);
-        report = { yearLevelStats };
+        // Add percentage and sort by year level order
+        const yearLevelOrder = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"];
+        const totalForYearLevels = yearLevelStats.reduce((sum, y) => sum + y.count, 0);
+        const yearLevelStatsWithPercent = yearLevelStats
+          .map((y) => ({
+            ...y,
+            percentage: totalForYearLevels > 0 
+              ? ((y.count / totalForYearLevels) * 100).toFixed(1)
+              : 0,
+            order: yearLevelOrder.indexOf(y._id) !== -1 ? yearLevelOrder.indexOf(y._id) : 999,
+          }))
+          .sort((a, b) => a.order - b.order);
+        report = { yearLevelStats: yearLevelStatsWithPercent };
         break;
 
       case "company-industries":
         // Company industry distribution
         const industryStats = await Company.aggregate([
+          { $match: { industry: { $exists: true, $ne: null, $ne: "" } } },
           { $group: { _id: "$industry", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
         ]);
-        report = { industryStats };
+        // Add percentage calculation
+        const totalCompaniesForIndustries = industryStats.reduce((sum, i) => sum + i.count, 0);
+        const industryStatsWithPercent = industryStats.map((i) => ({
+          ...i,
+          percentage: totalCompaniesForIndustries > 0 
+            ? ((i.count / totalCompaniesForIndustries) * 100).toFixed(1)
+            : 0,
+        }));
+        report = { industryStats: industryStatsWithPercent };
         break;
 
       case "company-sizes":
         // Company size distribution
         const sizeStats = await Company.aggregate([
+          { $match: { companySize: { $exists: true, $ne: null, $ne: "" } } },
           { $group: { _id: "$companySize", count: { $sum: 1 } } },
           { $sort: { count: -1 } },
         ]);
-        report = { sizeStats };
+        // Add percentage and sort by size order
+        const sizeOrder = ["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"];
+        const totalForSizes = sizeStats.reduce((sum, s) => sum + s.count, 0);
+        const sizeStatsWithPercent = sizeStats
+          .map((s) => ({
+            ...s,
+            percentage: totalForSizes > 0 
+              ? ((s.count / totalForSizes) * 100).toFixed(1)
+              : 0,
+            order: sizeOrder.indexOf(s._id) !== -1 ? sizeOrder.indexOf(s._id) : 999,
+          }))
+          .sort((a, b) => a.order - b.order);
+        report = { sizeStats: sizeStatsWithPercent };
         break;
 
       case "verification-status":
@@ -923,8 +1091,11 @@ export const getReports = async (req, res) => {
         break;
 
       case "internship-readiness":
-        // Student internship readiness by program
+        // Student internship readiness by program - use actual courses from database
         const readinessStats = await Student.aggregate([
+          {
+            $match: { program: { $exists: true, $ne: null, $ne: "" } },
+          },
           {
             $group: {
               _id: "$program",
@@ -944,9 +1115,43 @@ export const getReports = async (req, res) => {
               },
             },
           },
-          { $sort: { readinessRate: -1 } },
         ]);
-        report = { readinessStats };
+        
+        // Get all unique programs from database
+        const allProgramsForReadiness = await Student.distinct("program", {
+          program: { $exists: true, $ne: null, $ne: "" },
+        });
+        
+        // Create a map of existing stats
+        const readinessStatsMap = {};
+        readinessStats.forEach((stat) => {
+          readinessStatsMap[stat._id] = stat;
+        });
+        
+        // Combine: include all programs from system
+        const allReadinessStats = allProgramsForReadiness.map((program) => {
+          const existing = readinessStatsMap[program];
+          if (existing) {
+            return existing;
+          }
+          return {
+            _id: program,
+            total: 0,
+            ready: 0,
+            notReady: 0,
+            readinessRate: 0,
+          };
+        });
+        
+        // Sort by readiness rate (descending), then by total students
+        allReadinessStats.sort((a, b) => {
+          if (b.readinessRate !== a.readinessRate) {
+            return b.readinessRate - a.readinessRate;
+          }
+          return b.total - a.total;
+        });
+        
+        report = { readinessStats: allReadinessStats };
         break;
 
       case "profile-visibility":
@@ -977,39 +1182,74 @@ export const getReports = async (req, res) => {
 
       case "activity-trends":
         // Activity trends over time
+        const activityGroupId = period === "day"
+          ? {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+              day: { $dayOfMonth: "$createdAt" },
+            }
+          : period === "year"
+          ? { year: { $year: "$createdAt" } }
+          : {
+              year: { $year: "$createdAt" },
+              month: { $month: "$createdAt" },
+            };
+
         const activityStats = await Promise.all([
           // Student registrations
           Student.aggregate([
             { $match: dateQuery },
             {
               $group: {
-                _id: {
-                  year: { $year: "$createdAt" },
-                  month: { $month: "$createdAt" },
-                },
+                _id: activityGroupId,
                 count: { $sum: 1 },
               },
             },
-            { $sort: { "_id.year": 1, "_id.month": 1 } },
+            {
+              $sort: period === "day"
+                ? { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+                : period === "year"
+                ? { "_id.year": 1 }
+                : { "_id.year": 1, "_id.month": 1 },
+            },
           ]),
           // Company registrations
           Company.aggregate([
             { $match: dateQuery },
             {
               $group: {
-                _id: {
-                  year: { $year: "$createdAt" },
-                  month: { $month: "$createdAt" },
-                },
+                _id: activityGroupId,
                 count: { $sum: 1 },
               },
             },
-            { $sort: { "_id.year": 1, "_id.month": 1 } },
+            {
+              $sort: period === "day"
+                ? { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+                : period === "year"
+                ? { "_id.year": 1 }
+                : { "_id.year": 1, "_id.month": 1 },
+            },
           ]),
         ]);
+
+        // Format dates
+        const formatActivityData = (data) => {
+          return data.map((item) => {
+            const dateLabel = period === "day"
+              ? `${item._id.year}-${String(item._id.month).padStart(2, "0")}-${String(item._id.day).padStart(2, "0")}`
+              : period === "year"
+              ? `${item._id.year}`
+              : `${item._id.year}-${String(item._id.month).padStart(2, "0")}`;
+            return {
+              ...item,
+              dateLabel,
+            };
+          });
+        };
+
         report = {
-          studentActivity: activityStats[0],
-          companyActivity: activityStats[1],
+          studentActivity: formatActivityData(activityStats[0]),
+          companyActivity: formatActivityData(activityStats[1]),
         };
         break;
 
@@ -1017,21 +1257,60 @@ export const getReports = async (req, res) => {
         // Geographic distribution (if location data is available)
         const locationStats = await Promise.all([
           Student.aggregate([
-            { $match: { address: { $exists: true, $ne: "" } } },
-            { $group: { _id: "$address", count: { $sum: 1 } } },
+            {
+              $match: {
+                $or: [
+                  { address: { $exists: true, $ne: null, $ne: "" } },
+                  { location: { $exists: true, $ne: null, $ne: "" } },
+                ],
+              },
+            },
+            {
+              $group: {
+                _id: { $ifNull: ["$address", "$location"] },
+                count: { $sum: 1 },
+              },
+            },
             { $sort: { count: -1 } },
             { $limit: 20 },
           ]),
           Company.aggregate([
-            { $match: { address: { $exists: true, $ne: "" } } },
-            { $group: { _id: "$address", count: { $sum: 1 } } },
+            {
+              $match: {
+                $or: [
+                  { address: { $exists: true, $ne: null, $ne: "" } },
+                  { location: { $exists: true, $ne: null, $ne: "" } },
+                ],
+              },
+            },
+            {
+              $group: {
+                _id: { $ifNull: ["$address", "$location"] },
+                count: { $sum: 1 },
+              },
+            },
             { $sort: { count: -1 } },
             { $limit: 20 },
           ]),
         ]);
+        
+        // Calculate totals for percentage
+        const totalStudentsWithLocation = locationStats[0].reduce((sum, loc) => sum + loc.count, 0);
+        const totalCompaniesWithLocation = locationStats[1].reduce((sum, loc) => sum + loc.count, 0);
+        
         report = {
-          studentLocations: locationStats[0],
-          companyLocations: locationStats[1],
+          studentLocations: locationStats[0].map((loc) => ({
+            ...loc,
+            percentage: totalStudentsWithLocation > 0
+              ? ((loc.count / totalStudentsWithLocation) * 100).toFixed(1)
+              : 0,
+          })),
+          companyLocations: locationStats[1].map((loc) => ({
+            ...loc,
+            percentage: totalCompaniesWithLocation > 0
+              ? ((loc.count / totalCompaniesWithLocation) * 100).toFixed(1)
+              : 0,
+          })),
         };
         break;
 
@@ -1080,6 +1359,228 @@ export const getReports = async (req, res) => {
                     100
                   ).toFixed(1)
                 : 0,
+          },
+        };
+        break;
+
+      case "internship-postings":
+        // Internship postings statistics
+        const companiesWithSlots = await Company.find({
+          ojtSlots: { $exists: true, $ne: [] },
+        }).select("ojtSlots");
+
+        let postingsCount = 0;
+        let activePostings = 0;
+        let closedPostings = 0;
+        let pendingApproval = 0;
+        let approvedPostings = 0;
+        let rejectedPostings = 0;
+        const postingsByIndustry = {};
+        const postingsByStatus = {};
+        const postingsByWorkType = {};
+
+        companiesWithSlots.forEach((company) => {
+          if (company.ojtSlots && company.ojtSlots.length > 0) {
+            company.ojtSlots.forEach((slot) => {
+              postingsCount++;
+              
+              // Status counts
+              if (slot.status === "open") activePostings++;
+              else if (slot.status === "closed" || slot.status === "filled") closedPostings++;
+              
+              // Approval status
+              if (slot.approvalStatus === "pending") pendingApproval++;
+              else if (slot.approvalStatus === "approved") approvedPostings++;
+              else if (slot.approvalStatus === "rejected") rejectedPostings++;
+              
+              // By status
+              const status = slot.status || "unknown";
+              postingsByStatus[status] = (postingsByStatus[status] || 0) + 1;
+              
+              // By work type
+              if (slot.workType) {
+                postingsByWorkType[slot.workType] = (postingsByWorkType[slot.workType] || 0) + 1;
+              }
+            });
+          }
+        });
+
+        // Get company industry for postings
+        const companiesForIndustry = await Company.find({
+          ojtSlots: { $exists: true, $ne: [] },
+        }).select("industry ojtSlots");
+
+        companiesForIndustry.forEach((company) => {
+          if (company.ojtSlots && company.ojtSlots.length > 0) {
+            const industry = company.industry || "Unknown";
+            postingsByIndustry[industry] = (postingsByIndustry[industry] || 0) + company.ojtSlots.length;
+          }
+        });
+
+        report = {
+          internshipPostings: {
+            total: postingsCount,
+            active: activePostings,
+            closed: closedPostings,
+            pendingApproval,
+            approved: approvedPostings,
+            rejected: rejectedPostings,
+            byStatus: Object.entries(postingsByStatus).map(([status, count]) => ({
+              _id: status,
+              count,
+            })),
+            byIndustry: Object.entries(postingsByIndustry)
+              .map(([industry, count]) => ({
+                _id: industry,
+                count,
+              }))
+              .sort((a, b) => b.count - a.count),
+            byWorkType: Object.entries(postingsByWorkType).map(([workType, count]) => ({
+              _id: workType,
+              count,
+            })),
+          },
+        };
+        break;
+
+      case "applications":
+        // Applications statistics (preferred applicants)
+        const companiesWithApplicants = await Company.find({
+          preferredApplicants: { $exists: true, $ne: [] },
+        }).select("preferredApplicants ojtSlots industry");
+
+        let applicationsCount = 0;
+        const applicationsByCompany = [];
+        const applicationsByIndustry = {};
+
+        companiesWithApplicants.forEach((company) => {
+          if (company.preferredApplicants && company.preferredApplicants.length > 0) {
+            const appCount = company.preferredApplicants.length;
+            applicationsCount += appCount;
+            
+            applicationsByCompany.push({
+              companyName: company.companyName || "Unknown",
+              companyId: company._id,
+              count: appCount,
+            });
+
+            const industry = company.industry || "Unknown";
+            applicationsByIndustry[industry] = (applicationsByIndustry[industry] || 0) + appCount;
+          }
+        });
+
+        // Count total positions available
+        const allCompanies = await Company.find().select("ojtSlots");
+        let totalPositions = 0;
+        allCompanies.forEach((company) => {
+          if (company.ojtSlots && company.ojtSlots.length > 0) {
+            company.ojtSlots.forEach((slot) => {
+              totalPositions += slot.positions || 1;
+            });
+          }
+        });
+
+        report = {
+          applications: {
+            total: applicationsCount,
+            totalPositions,
+            applicationToPositionRatio: totalPositions > 0
+              ? (applicationsCount / totalPositions).toFixed(2)
+              : 0,
+            byCompany: applicationsByCompany.sort((a, b) => b.count - a.count).slice(0, 20),
+            byIndustry: Object.entries(applicationsByIndustry)
+              .map(([industry, count]) => ({
+                _id: industry,
+                count,
+              }))
+              .sort((a, b) => b.count - a.count),
+          },
+        };
+        break;
+
+      case "evaluations":
+        // Student evaluations statistics
+        const evaluationStats = await StudentEvaluation.aggregate([
+          {
+            $group: {
+              _id: "$status",
+              count: { $sum: 1 },
+            },
+          },
+        ]);
+
+        const evaluationsByStatus = {};
+        evaluationStats.forEach((stat) => {
+          evaluationsByStatus[stat._id] = stat.count;
+        });
+
+        // Evaluations over time
+        const evaluationsOverTime = await StudentEvaluation.aggregate([
+          { $match: dateQuery },
+          {
+            $group: {
+              _id: period === "day"
+                ? {
+                    year: { $year: "$createdAt" },
+                    month: { $month: "$createdAt" },
+                    day: { $dayOfMonth: "$createdAt" },
+                  }
+                : period === "year"
+                ? { year: { $year: "$createdAt" } }
+                : {
+                    year: { $year: "$createdAt" },
+                    month: { $month: "$createdAt" },
+                  },
+              count: { $sum: 1 },
+              pending: {
+                $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+              },
+              inProgress: {
+                $sum: { $cond: [{ $eq: ["$status", "in_progress"] }, 1, 0] },
+              },
+              submitted: {
+                $sum: { $cond: [{ $eq: ["$status", "submitted"] }, 1, 0] },
+              },
+            },
+          },
+          {
+            $sort: period === "day"
+              ? { "_id.year": 1, "_id.month": 1, "_id.day": 1 }
+              : period === "year"
+              ? { "_id.year": 1 }
+              : { "_id.year": 1, "_id.month": 1 },
+          },
+        ]);
+
+        // Format dates
+        const formattedEvaluationsOverTime = evaluationsOverTime.map((evaluation) => {
+          const dateLabel = period === "day"
+            ? `${evaluation._id.year}-${String(evaluation._id.month).padStart(2, "0")}-${String(evaluation._id.day).padStart(2, "0")}`
+            : period === "year"
+            ? `${evaluation._id.year}`
+            : `${evaluation._id.year}-${String(evaluation._id.month).padStart(2, "0")}`;
+          return {
+            ...evaluation,
+            dateLabel,
+          };
+        });
+
+        const evaluationsTotal = await StudentEvaluation.countDocuments();
+        const submittedEvaluations = evaluationsByStatus.submitted || 0;
+        const pendingEvaluations = evaluationsByStatus.pending || 0;
+        const inProgressEvaluations = evaluationsByStatus.in_progress || 0;
+
+        report = {
+          evaluations: {
+            total: evaluationsTotal,
+            pending: pendingEvaluations,
+            inProgress: inProgressEvaluations,
+            submitted: submittedEvaluations,
+            submissionRate: evaluationsTotal > 0
+              ? ((submittedEvaluations / evaluationsTotal) * 100).toFixed(1)
+              : 0,
+            byStatus: evaluationStats,
+            overTime: formattedEvaluationsOverTime,
           },
         };
         break;
@@ -1488,3 +1989,443 @@ export const getCompaniesWithPreferredApplicants = async (req, res) => {
     });
   }
 };
+
+const buildSectionResponses = (sections = []) =>
+  sections.map((section) => ({
+    label: section.label,
+    title: section.title,
+    description: section.description,
+    questions: section.questions.map((question) => ({
+      prompt: question.prompt,
+      description: question.description,
+      rating: null,
+      comments: "",
+    })),
+  }));
+
+const parseDate = (value) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// Evaluation Templates CRUD
+export const createEvaluationTemplate = async (req, res) => {
+  try {
+    const payload = {
+      ...req.body,
+      createdBy: req.user.id,
+      updatedBy: req.user.id,
+    };
+
+    const template = await EvaluationTemplate.create(payload);
+
+    res.status(201).json({
+      success: true,
+      data: template,
+    });
+  } catch (error) {
+    console.error("❌ Error creating evaluation template:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const getEvaluationTemplates = async (req, res) => {
+  try {
+    const { course, isActive } = req.query;
+    const query = {};
+
+    if (course) {
+      query.course = course;
+    }
+
+    if (isActive !== undefined) {
+      query.isActive = isActive === "true";
+    }
+
+    const templates = await EvaluationTemplate.find(query).sort({
+      updatedAt: -1,
+    });
+
+    res.json({
+      success: true,
+      data: templates,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching evaluation templates:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const getEvaluationTemplateById = async (req, res) => {
+  try {
+    const template = await EvaluationTemplate.findById(req.params.id);
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation template not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: template,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching evaluation template:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const updateEvaluationTemplate = async (req, res) => {
+  try {
+    const template = await EvaluationTemplate.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, updatedBy: req.user.id },
+      { new: true, runValidators: true }
+    );
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation template not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: template,
+    });
+  } catch (error) {
+    console.error("❌ Error updating evaluation template:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const deleteEvaluationTemplate = async (req, res) => {
+  try {
+    const template = await EvaluationTemplate.findByIdAndDelete(req.params.id);
+
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation template not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Template deleted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error deleting evaluation template:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+// Assign evaluations to companies
+export const assignStudentEvaluations = async (req, res) => {
+  try {
+    const {
+      templateId,
+      companyId,
+      studentIds = [],
+      trainingPeriod,
+      internshipAssignment,
+      dueDate,
+      adminNotes,
+    } = req.body;
+
+    if (!templateId || !companyId || !studentIds.length) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Template, company, and at least one student are required to assign evaluations",
+      });
+    }
+
+    const template = await EvaluationTemplate.findById(templateId);
+    if (!template) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation template not found",
+      });
+    }
+
+    const company = await Company.findById(companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found",
+      });
+    }
+
+    const students = await Student.find({ _id: { $in: studentIds } });
+    if (!students.length) {
+      return res.status(404).json({
+        success: false,
+        message: "No valid students found for assignment",
+      });
+    }
+
+    const sectionsSnapshot = buildSectionResponses(template.sections);
+    const createdEvaluations = [];
+    const skipped = [];
+
+    for (const student of students) {
+      const existing = await StudentEvaluation.findOne({
+        template: template._id,
+        student: student._id,
+        company: company._id,
+        status: { $in: ["pending", "in_progress"] },
+      });
+
+      if (existing) {
+        skipped.push(student._id);
+        continue;
+      }
+
+      const evaluation = await StudentEvaluation.create({
+        template: template._id,
+        templateSnapshot: {
+          name: template.name,
+          sections: sectionsSnapshot,
+          ratingScale: template.ratingScale,
+        },
+        student: student._id,
+        company: company._id,
+        studentInfo: {
+          fullName: `${student.firstName} ${student.lastName}`,
+          program: student.program,
+          course: student.program,
+          studentNumber: student.studentId,
+          email: student.email,
+        },
+        companyInfo: {
+          name: company.companyName,
+          representative: `${company.firstName} ${company.lastName}`,
+          email: company.email,
+        },
+        trainingPeriod: {
+          from: parseDate(trainingPeriod?.from),
+          to: parseDate(trainingPeriod?.to),
+        },
+        internshipAssignment,
+        dueDate: parseDate(dueDate),
+        adminNotes,
+        status: "pending",
+        sections: buildSectionResponses(template.sections),
+      });
+
+      createdEvaluations.push(evaluation);
+    }
+
+    if (createdEvaluations.length) {
+      await Notification.create({
+        userId: company._id,
+        type: "system_announcement",
+        title: "Student Evaluations Assigned",
+        message: `${createdEvaluations.length} student evaluation(s) require your feedback.`,
+        data: {
+          relatedId: company._id,
+        },
+        priority: "medium",
+      });
+
+      // Emit real-time event to company
+      try {
+        const io = req.app?.get("io");
+        if (io) {
+          io.to(`user_${company._id}`).emit("evaluations_assigned", {
+            count: createdEvaluations.length,
+            evaluations: createdEvaluations.map((evaluation) => ({
+              _id: evaluation._id,
+              studentInfo: evaluation.studentInfo,
+              templateSnapshot: evaluation.templateSnapshot,
+              status: evaluation.status,
+              dueDate: evaluation.dueDate,
+            })),
+            message: `${createdEvaluations.length} new student evaluation(s) have been assigned to you.`,
+          });
+          console.log(`✅ Real-time notification sent to company ${company._id}`);
+        } else {
+          console.warn("⚠️ Socket.IO instance not available for real-time notification");
+        }
+      } catch (socketError) {
+        console.error("❌ Error emitting socket event:", socketError);
+        // Don't fail the request if socket emission fails
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        created: createdEvaluations.length,
+        skipped: skipped.length,
+        totalRequested: studentIds.length,
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error assigning student evaluations:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const getStudentEvaluations = async (req, res) => {
+  try {
+    const {
+      status,
+      companyId,
+      studentId,
+      page = 1,
+      limit = 20,
+      search = "",
+    } = req.query;
+
+    const query = {};
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (companyId) {
+      query.company = companyId;
+    }
+
+    if (studentId) {
+      query.student = studentId;
+    }
+
+    if (search) {
+      query.$or = [
+        { "studentInfo.fullName": { $regex: search, $options: "i" } },
+        { "companyInfo.name": { $regex: search, $options: "i" } },
+        { internshipAssignment: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [evaluations, total] = await Promise.all([
+      StudentEvaluation.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate("student", "firstName lastName email studentId program")
+        .populate("company", "companyName email industry"),
+      StudentEvaluation.countDocuments(query),
+    ]);
+
+    res.json({
+      success: true,
+      data: evaluations,
+      pagination: {
+        total,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("❌ Error fetching student evaluations:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const getStudentEvaluationById = async (req, res) => {
+  try {
+    const evaluation = await StudentEvaluation.findById(req.params.id)
+      .populate("student", "firstName lastName email studentId program")
+      .populate("company", "companyName email industry");
+
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        message: "Student evaluation not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: evaluation,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching student evaluation:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+// Delete/Cancel student evaluation
+export const deleteStudentEvaluation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const evaluation = await StudentEvaluation.findById(id);
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation not found",
+      });
+    }
+
+    // Delete the evaluation
+    await StudentEvaluation.findByIdAndDelete(id);
+
+    // Emit real-time event to company if evaluation was assigned
+    try {
+      const io = req.app?.get("io");
+      if (io && evaluation.company) {
+        io.to(`user_${evaluation.company}`).emit("evaluation_cancelled", {
+          evaluationId: id,
+          studentName: evaluation.studentInfo?.fullName || "Student",
+          message: "An evaluation request has been cancelled by admin.",
+        });
+        console.log(`✅ Real-time notification sent to company ${evaluation.company}`);
+      }
+    } catch (socketError) {
+      console.error("Error sending socket notification:", socketError);
+      // Don't fail the request if socket fails
+    }
+
+    res.json({
+      success: true,
+      message: "Evaluation deleted successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error deleting student evaluation:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+
+
+

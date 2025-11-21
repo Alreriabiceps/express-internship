@@ -123,6 +123,9 @@ const connectDB = async () => {
 // Connect to database before starting server
 await connectDB();
 
+// Make io available to routes via app BEFORE routes are registered
+app.set("io", io);
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -168,3 +171,6 @@ server.listen(PORT, () => {
   );
   console.log(`✨ Backend deployed and ready!`);
 });
+
+// Export app for testing
+export { app };

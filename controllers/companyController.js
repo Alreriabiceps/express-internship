@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import Company from "../models/Company.js";
 import Notification from "../models/Notification.js";
+import StudentEvaluation from "../models/StudentEvaluation.js";
 
 // Get company profile
 export const getCompanyProfile = async (req, res) => {
@@ -580,6 +581,149 @@ export const applyToInternship = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error applying to internship:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+// Evaluations assigned to company
+export const getCompanyEvaluations = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const query = { company: req.user.id };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const evaluations = await StudentEvaluation.find(query)
+      .sort({ createdAt: -1 })
+      .select(
+        "studentInfo companyInfo status dueDate internshipAssignment trainingPeriod templateSnapshot.name createdAt submittedAt"
+      );
+
+    res.json({
+      success: true,
+      data: evaluations,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching company evaluations:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const getCompanyEvaluationById = async (req, res) => {
+  try {
+    const evaluation = await StudentEvaluation.findOne({
+      _id: req.params.evaluationId,
+      company: req.user.id,
+    });
+
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: evaluation,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching evaluation:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+export const updateCompanyEvaluation = async (req, res) => {
+  try {
+    const { sections = [], overallComments, submit } = req.body;
+
+    const evaluation = await StudentEvaluation.findOne({
+      _id: req.params.evaluationId,
+      company: req.user.id,
+    });
+
+    if (!evaluation) {
+      return res.status(404).json({
+        success: false,
+        message: "Evaluation not found",
+      });
+    }
+
+    if (evaluation.status === "submitted") {
+      return res.status(400).json({
+        success: false,
+        message: "Evaluation has already been submitted",
+      });
+    }
+
+    const updatedSections = evaluation.sections.map((section) => {
+      const incomingSection = sections.find(
+        (s) => s.label === section.label || s.title === section.title
+      );
+
+      if (!incomingSection) {
+        return section;
+      }
+
+      const updatedQuestions = section.questions.map((question) => {
+        const incomingQuestion =
+          incomingSection.questions?.find(
+            (q) =>
+              q.prompt === question.prompt ||
+              q._id === String(question._id) ||
+              q.id === String(question._id)
+          ) || {};
+
+        if (
+          typeof incomingQuestion.rating === "number" &&
+          incomingQuestion.rating >= 1 &&
+          incomingQuestion.rating <= 5
+        ) {
+          question.rating = incomingQuestion.rating;
+        }
+
+        if (incomingQuestion.comments !== undefined) {
+          question.comments = incomingQuestion.comments;
+        }
+
+        return question;
+      });
+
+      section.questions = updatedQuestions;
+      return section;
+    });
+
+    evaluation.sections = updatedSections;
+    evaluation.overallComments =
+      overallComments !== undefined
+        ? overallComments
+        : evaluation.overallComments;
+    evaluation.status = submit ? "submitted" : "in_progress";
+
+    if (submit) {
+      evaluation.submittedAt = new Date();
+      evaluation.submittedBy = req.user.id;
+    }
+
+    await evaluation.save();
+
+    res.json({
+      success: true,
+      data: evaluation,
+    });
+  } catch (error) {
+    console.error("❌ Error updating evaluation:", error);
     res.status(500).json({
       success: false,
       message: error.message || "Server error",

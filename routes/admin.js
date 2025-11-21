@@ -24,6 +24,15 @@ import {
   getPendingInternshipPostings,
   undoApproval,
   getCompaniesWithPreferredApplicants,
+  createEvaluationTemplate,
+  getEvaluationTemplates,
+  getEvaluationTemplateById,
+  updateEvaluationTemplate,
+  deleteEvaluationTemplate,
+  assignStudentEvaluations,
+  getStudentEvaluations,
+  getStudentEvaluationById,
+  deleteStudentEvaluation,
 } from "../controllers/adminController.js";
 import { verifyToken, authorize } from "../middlewares/auth.js";
 
@@ -54,6 +63,19 @@ router.put("/users/:id/reject", rejectUser);
 router.get("/logs", getSystemLogs);
 router.post("/announcements", createSystemAnnouncement);
 router.get("/reports", getReports);
+
+// Evaluation templates
+router.post("/evaluation-templates", createEvaluationTemplate);
+router.get("/evaluation-templates", getEvaluationTemplates);
+router.get("/evaluation-templates/:id", getEvaluationTemplateById);
+router.put("/evaluation-templates/:id", updateEvaluationTemplate);
+router.delete("/evaluation-templates/:id", deleteEvaluationTemplate);
+
+// Student evaluations
+router.post("/evaluations/assign", assignStudentEvaluations);
+router.get("/evaluations", getStudentEvaluations);
+router.get("/evaluations/:id", getStudentEvaluationById);
+router.delete("/evaluations/:id", deleteStudentEvaluation);
 
 // Internship postings routes
 router.get("/internship-postings", getAllInternshipPostings);

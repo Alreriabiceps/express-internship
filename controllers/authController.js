@@ -431,6 +431,16 @@ export const updateProfile = async (req, res, next) => {
 // @access  Private
 export const changePassword = async (req, res, next) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
     const { currentPassword, newPassword } = req.body;
 
     let user;
@@ -482,6 +492,16 @@ export const changePassword = async (req, res, next) => {
 // @access  Private
 export const changeEmail = async (req, res, next) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: errors.array(),
+      });
+    }
+
     const { newEmail, currentPassword } = req.body;
 
     let user;
